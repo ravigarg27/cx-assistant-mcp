@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -27,12 +28,26 @@ def cookies_as_dict(cookies: list) -> dict:
     return {c["name"]: c["value"] for c in cookies}
 
 async def _launch_browser(p):
-    """Try Chromium -> Edge -> WebKit in order. Returns (browser, label)."""
-    attempts = [
-        (p.chromium, {}, "Chromium"),
-        (p.chromium, {"channel": "msedge"}, "Edge"),
-        (p.webkit, {}, "WebKit/Safari"),
-    ]
+    """Platform-aware browser launch with fallback for stage login.
+
+    Windows: Edge -> Chromium
+    Mac:     Safari (WebKit) -> Chromium
+    Other:   Chromium only
+    """
+    if sys.platform == "win32":
+        attempts = [
+            (p.chromium, {"channel": "msedge"}, "Edge"),
+            (p.chromium, {}, "Chromium"),
+        ]
+    elif sys.platform == "darwin":
+        attempts = [
+            (p.webkit, {}, "Safari"),
+            (p.chromium, {}, "Chromium"),
+        ]
+    else:
+        attempts = [
+            (p.chromium, {}, "Chromium"),
+        ]
     last_error = None
     for engine, kwargs, label in attempts:
         try:
@@ -42,9 +57,8 @@ async def _launch_browser(p):
             last_error = e
             continue
     raise RuntimeError(
-        f"No supported browser found (tried Chromium, Edge, WebKit). "
-        f"Last error: {last_error}. "
-        f"Run 'playwright install chromium' or install Edge/Chrome."
+        f"No supported browser found. Last error: {last_error}. "
+        f"Run 'playwright install chromium' and try again."
     )
 
 async def browser_login(environment: str = "production") -> str:
@@ -53,7 +67,8 @@ async def browser_login(environment: str = "production") -> str:
     NOTE: Cisco SSO cookies are HttpOnly — cannot be detected via document.cookie.
     Instead we wait for the post-login URL redirect back to the app.
 
-    For stage: tries Chromium -> Edge -> WebKit if earlier browsers fail.
+    For stage: uses platform default (Edge on Windows, Safari on Mac) with
+               Chromium as fallback.
     For production: uses Chromium only.
     """
     from playwright.async_api import async_playwright
