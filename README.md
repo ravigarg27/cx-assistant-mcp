@@ -12,36 +12,59 @@ Query Cisco CX Assistant (production and stage) directly from Cursor using natur
 ### 1. Get the project
 
 Copy the `cx-assistant-mcp` folder to your machine, for example:
-```
-C:\Users\<your-name>\Projects\cx-assistant-mcp
-```
+
+**Windows:** `C:\Users\<your-name>\Projects\cx-assistant-mcp`
+
+**Mac:** `/Users/<your-name>/Projects/cx-assistant-mcp`
 
 ### 2. Install dependencies
 
 Open a terminal in the project folder and run:
 
+**Windows:**
 ```bash
 python -m venv venv
-venv\Scripts\activate
-pip install -r requirements-dev.txt
+venv\Scripts\pip install -r requirements.txt
+venv\Scripts\python -m playwright install chromium
+```
+
+**Mac:**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 playwright install chromium
 ```
 
 ### 3. Configure Cursor
 
 Open this file (create it if it doesn't exist):
-```
-C:\Users\<your-name>\AppData\Roaming\Cursor\User\mcp.json
-```
 
-Add this configuration (replace `<your-name>` with your Windows username):
+**Windows:** `C:\Users\<your-name>\AppData\Roaming\Cursor\User\mcp.json`
 
+**Mac:** `~/.cursor/mcp.json`
+
+Add this configuration (replace `<your-name>` with your username):
+
+**Windows:**
 ```json
 {
   "mcpServers": {
     "cx-assistant": {
       "command": "C:/Users/<your-name>/Projects/cx-assistant-mcp/venv/Scripts/python.exe",
       "args": ["C:/Users/<your-name>/Projects/cx-assistant-mcp/server.py"]
+    }
+  }
+}
+```
+
+**Mac:**
+```json
+{
+  "mcpServers": {
+    "cx-assistant": {
+      "command": "/Users/<your-name>/Projects/cx-assistant-mcp/venv/bin/python",
+      "args": ["/Users/<your-name>/Projects/cx-assistant-mcp/server.py"]
     }
   }
 }
@@ -102,6 +125,7 @@ Login to CX Assistant stage
 - **Deal IDs** should be in format `D-XXXXX` (e.g. `D-72595030`)
 - **Session cookies expire** — if you get an authentication error, run `Login to CX Assistant production` again
 - **Stage vs Production**: Use stage for testing and exploration; use production for real customer data
+- **Stage browser fallback**: If Chrome fails during stage login, the tool automatically tries Edge then Safari
 
 ---
 
@@ -114,3 +138,4 @@ Login to CX Assistant stage
 | Browser doesn't open | Run `playwright install chromium` in the project folder |
 | "Could not find matching question" | Use `ask_*_open` for free-form questions instead |
 | Login browser doesn't close | Complete Duo login — browser closes automatically after redirect |
+| Stage login fails on all browsers | Run `playwright install webkit` then try again |
