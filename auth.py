@@ -14,10 +14,13 @@ def save_cookies(cookies: list, path: Path = cookies_path) -> None:
     path.write_text(json.dumps(cookies, indent=2))
 
 def load_cookies(path: Path = cookies_path) -> Optional[list]:
-    """Load cookies from local JSON file. Returns None if file missing."""
+    """Load cookies from local JSON file. Returns None if missing or corrupt."""
     if not path.exists():
         return None
-    return json.loads(path.read_text())
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
 
 def cookies_as_dict(cookies: list) -> dict:
     """Convert Playwright cookie list to {name: value} dict for httpx."""
@@ -42,8 +45,12 @@ async def browser_login(environment: str = "production") -> str:
             f"{host}/**",
             timeout=180_000
         )
-        # Extra wait for cookies to fully settle after redirect
-        await page.wait_for_load_state("networkidle", timeout=15_000)
+        # Extra wait for cookies to fully settle — best effort only.
+        # Some pages never reach networkidle due to background polling.
+        try:
+            await page.wait_for_load_state("networkidle", timeout=15_000)
+        except Exception:
+            pass
         cookies = await context.cookies()
         await browser.close()
     save_cookies(cookies)

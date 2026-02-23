@@ -63,7 +63,7 @@ async def call_structured(
         resp = await client.post(url, json=body)
         if resp.status_code == 200:
             return 200, resp.json().get("content", "")
-        return resp.status_code, ""
+        return resp.status_code, resp.text
 
 async def call_open_prompt(
     environment: str,
@@ -84,7 +84,7 @@ async def call_open_prompt(
             "POST", url, json=body, headers={"Accept": "text/event-stream"}
         ) as resp:
             if resp.status_code != 200:
-                return resp.status_code, ""
+                return resp.status_code, resp.text
             async for chunk in resp.aiter_text():
                 raw += chunk
     return 200, parse_sse_response(raw)
