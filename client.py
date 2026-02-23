@@ -84,6 +84,7 @@ async def call_open_prompt(
             "POST", url, json=body, headers={"Accept": "text/event-stream"}
         ) as resp:
             if resp.status_code != 200:
+                await resp.aread()
                 return resp.status_code, resp.text
             async for chunk in resp.aiter_text():
                 raw += chunk

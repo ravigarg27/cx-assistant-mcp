@@ -38,7 +38,10 @@ async def _ask_structured(environment: str, message: str) -> str:
     status, result = await call_structured(environment, question["agent"], body, cookies)
     if status == 401:
         await browser_login(environment)
-        cookies = cookies_as_dict(load_cookies())
+        refreshed = load_cookies()
+        if not refreshed:
+            return "Login failed. Please use the login tool and try again."
+        cookies = cookies_as_dict(refreshed)
         status, result = await call_structured(environment, question["agent"], body, cookies)
     if status != 200:
         return f"API error: HTTP {status}"
@@ -59,7 +62,10 @@ async def _ask_open(environment: str, message: str) -> str:
         )
     if status == 401:
         await browser_login(environment)
-        cookies = cookies_as_dict(load_cookies())
+        refreshed = load_cookies()
+        if not refreshed:
+            return "Login failed. Please use the login tool and try again."
+        cookies = cookies_as_dict(refreshed)
         status, result = await call_open_prompt(environment, message, cookies)
     if status != 200:
         return f"API error: HTTP {status}"
