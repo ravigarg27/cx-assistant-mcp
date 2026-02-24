@@ -1,11 +1,18 @@
+"""HTTP client for CX Assistant API calls.
+
+Handles both structured (pre-built question) and open prompt (supervisor
+stream) endpoints, with SSE parsing and thread ID management.
+"""
+
 import json
 import uuid
 import httpx
 
 HOSTS = {
     "production": "https://cxassistant.cisco.com",
-    "stage": "https://cxassistant-stage.cisco.com"
+    "stage": "https://cxassistant-stage.cisco.com",
 }
+
 
 def build_structured_body(
     question: str,
@@ -13,21 +20,27 @@ def build_structured_body(
     frontend_id: str,
     agent: str,
     parameters: dict,
+    thread_id: str | None = None,
 ) -> dict:
-    """Build request body for POST /api/{agent}/message."""
+    """Build request body for POST /api/{agent}/message.
+
+    Args:
+        thread_id: Reuse an existing thread for follow-up context.
+                   If None, a new UUID is generated.
+    """
     return {
         "question": question,
         "questionId": question_id,
         "frontendId": frontend_id,
-        "threadId": str(uuid.uuid4()),
+        "threadId": thread_id or str(uuid.uuid4()),
         "parameters": parameters,
         "agent": agent,
     }
 
+
 def parse_sse_response(raw: str) -> str:
     """Parse SSE stream text. Prefer final event; fall back to accumulated tokens."""
     chunks = raw.split("\n\n")
-    # Pass 1: look for final event
     for chunk in chunks:
         if not chunk.startswith("data: "):
             continue
@@ -37,7 +50,6 @@ def parse_sse_response(raw: str) -> str:
                 return evt["data"]["response"]
         except Exception:
             pass
-    # Pass 2: accumulate token chunks
     tokens = []
     for chunk in chunks:
         if not chunk.startswith("data: "):
@@ -50,6 +62,7 @@ def parse_sse_response(raw: str) -> str:
             pass
     return "".join(tokens)
 
+
 async def call_structured(
     environment: str,
     agent: str,
@@ -58,24 +71,36 @@ async def call_structured(
     timeout: int = 120,
 ) -> tuple[int, str]:
     """POST to /api/{agent}/message. Returns (status_code, content_string)."""
-    url = f"{HOSTS[environment]}/api/{agent}/message"
+    host = HOSTS.get(environment, HOSTS["production"])
+    url = f"{host}/api/{agent}/message"
     async with httpx.AsyncClient(cookies=cookies, timeout=timeout) as client:
         resp = await client.post(url, json=body)
         if resp.status_code == 200:
-            return 200, resp.json().get("content", "")
+            try:
+                return 200, (resp.json().get("content") or "")
+            except (json.JSONDecodeError, ValueError):
+                return 200, resp.text
         return resp.status_code, resp.text
+
 
 async def call_open_prompt(
     environment: str,
     message: str,
     cookies: dict,
+    thread_id: str | None = None,
     timeout: int = 120,
-) -> tuple[int, str]:
-    """POST to /api/supervisor/stream, parse SSE. Returns (status_code, response_string)."""
-    url = f"{HOSTS[environment]}/api/supervisor/stream"
+) -> tuple[int, str, str]:
+    """POST to /api/supervisor/stream, parse SSE.
+
+    Returns (status_code, response_string, thread_id).
+    The thread_id is returned so callers can reuse it for follow-ups.
+    """
+    host = HOSTS.get(environment, HOSTS["production"])
+    url = f"{host}/api/supervisor/stream"
+    tid = thread_id or str(uuid.uuid4())
     body = {
         "message": message,
-        "thread_id": str(uuid.uuid4()),
+        "thread_id": tid,
         "rbac_access_scope": "my",
     }
     raw = ""
@@ -85,7 +110,7 @@ async def call_open_prompt(
         ) as resp:
             if resp.status_code != 200:
                 await resp.aread()
-                return resp.status_code, resp.text
+                return resp.status_code, resp.text, tid
             async for chunk in resp.aiter_text():
                 raw += chunk
-    return 200, parse_sse_response(raw)
+    return 200, parse_sse_response(raw), tid
