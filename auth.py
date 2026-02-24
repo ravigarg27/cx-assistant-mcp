@@ -73,19 +73,14 @@ async def browser_login(environment: str = "production") -> str:
     NOTE: Cisco SSO cookies are HttpOnly — cannot be detected via document.cookie.
     Instead we wait for the post-login URL redirect back to the app.
 
-    For stage: uses platform default (Edge on Windows, Safari on Mac) with
-               Chromium as fallback.
-    For production: uses Chromium only.
+    Uses platform default browser (Edge on Windows, Safari on Mac) with
+    Chromium as fallback.
     """
     from playwright.async_api import async_playwright
     host = HOSTS.get(environment, HOSTS["production"])
     async with async_playwright() as p:
-        if environment == "stage":
-            browser, label = await _launch_browser(p)
-            print(f"[cx-assistant] Opened {label} at {host}. Complete Cisco Duo login...")
-        else:
-            browser = await p.chromium.launch(headless=False)
-            print(f"[cx-assistant] Browser opened at {host}. Complete Cisco Duo login...")
+        browser, label = await _launch_browser(p)
+        print(f"[cx-assistant] Opened {label} at {host}. Complete Cisco Duo login...")
         context = await browser.new_context()
         page = await context.new_page()
         await page.goto(host)
