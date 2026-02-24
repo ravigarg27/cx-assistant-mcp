@@ -1,7 +1,13 @@
 import pytest
 import json
 from pathlib import Path
-from auth import save_cookies, load_cookies, cookies_as_dict, cookies_path
+from auth import (
+    save_cookies,
+    load_cookies,
+    cookies_as_dict,
+    cookies_path,
+    get_cookies_path,
+)
 
 def test_save_cookies_writes_json(tmp_path):
     path = tmp_path / "cookies.json"
@@ -33,3 +39,8 @@ def test_cookies_as_dict_extracts_name_value():
 def test_cookies_path_is_in_home_dir():
     assert cookies_path.parent == Path.home()
     assert cookies_path.name == ".cx-assistant-cookies.json"
+
+
+def test_get_cookies_path_is_environment_specific():
+    assert get_cookies_path("production").name == ".cx-assistant-cookies.json"
+    assert get_cookies_path("stage").name == ".cx-assistant-cookies-stage.json"

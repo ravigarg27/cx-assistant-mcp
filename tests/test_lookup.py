@@ -1,5 +1,11 @@
 import pytest
-from lookup import resolve_product, resolve_static, PRODUCTS, STATIC_OPTIONS
+from lookup import (
+    resolve_product,
+    resolve_static,
+    auto_select_remote_param,
+    PRODUCTS,
+    STATIC_OPTIONS,
+)
 
 
 # --- resolve_product ---
@@ -139,3 +145,42 @@ def test_all_static_options_resolvable():
                 f"Could not resolve {param_name} option: {opt['label']}"
             )
             assert result[0] == opt["value"]
+
+
+@pytest.mark.asyncio
+async def test_auto_select_remote_param_returns_none_for_ambiguous_options(monkeypatch):
+    async def fake_get_list(*args, **kwargs):
+        return [
+            {"label": "A", "value": "a"},
+            {"label": "B", "value": "b"},
+        ]
+
+    monkeypatch.setattr("lookup.get_list", fake_get_list)
+    result = await auto_select_remote_param(
+        "production",
+        "renewals",
+        "productName",
+        "q1",
+        {},
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_auto_select_remote_param_selects_primary_deployment(monkeypatch):
+    async def fake_get_list(*args, **kwargs):
+        return [
+            {"label": "[Primary] North", "value": "north", "_is_primary": True},
+            {"label": "West", "value": "west"},
+        ]
+
+    monkeypatch.setattr("lookup.get_list", fake_get_list)
+    result = await auto_select_remote_param(
+        "production",
+        "adoption",
+        "deployment",
+        "q1",
+        {},
+        prefer_primary=True,
+    )
+    assert result == ("north", "[Primary] North")

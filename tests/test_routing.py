@@ -220,6 +220,16 @@ def test_extract_tac_sentiment_time_period():
     assert params["tacSentimentTimePeriod"]["value"] == "current quarter"
 
 
+def test_extract_deployment_hint_captures_multiple_words():
+    params = extract_parameters(
+        "show adoption for deployment North America Core in APJC",
+        [_make_param_def("deployment")],
+    )
+    assert params["deployment"] is not None
+    assert params["deployment"]["_needs_resolution"] is True
+    assert params["deployment"]["label"] == "North America Core"
+
+
 # --- Opportunity ID ---
 
 def test_extract_opportunity_id():

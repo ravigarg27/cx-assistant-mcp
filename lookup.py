@@ -379,7 +379,10 @@ async def auto_select_remote_param(
     """Fetch all options for a remote-select param and auto-select one.
 
     For deployments, selects the primary deployment if prefer_primary is True
-    and a primary exists. Otherwise returns the first option.
+    and a primary exists.
+
+    For other cases, auto-select only when there is exactly one option to avoid
+    silently picking arbitrary values.
 
     Returns (value, label) or None if no options available.
     """
@@ -404,7 +407,10 @@ async def auto_select_remote_param(
             if "primary" in label:
                 return (opt["value"], opt["label"])
 
-    return (options[0]["value"], options[0]["label"])
+    if len(options) == 1:
+        return (options[0]["value"], options[0]["label"])
+
+    return None
 
 
 async def send_feedback(

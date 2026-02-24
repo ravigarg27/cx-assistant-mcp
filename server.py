@@ -5,7 +5,7 @@ with automatic question routing, parameter resolution, and follow-up support.
 """
 
 from fastmcp import FastMCP
-from auth import browser_login, load_cookies, cookies_as_dict
+from auth import browser_login, load_cookies, cookies_as_dict, get_cookies_path
 from routing import (
     find_best_question,
     extract_parameters,
@@ -29,7 +29,7 @@ _last_source: dict[str, str] = {}  # "structured" or "open"
 
 def _get_cookies_or_error(environment: str) -> dict | str:
     """Load cookies or return an error message string."""
-    cookies_list = load_cookies()
+    cookies_list = load_cookies(path=get_cookies_path(environment))
     if not cookies_list:
         return f"Not authenticated. Ask me to 'login to CX Assistant {environment}' first."
     return cookies_as_dict(cookies_list)
@@ -38,7 +38,7 @@ def _get_cookies_or_error(environment: str) -> dict | str:
 async def _refresh_cookies(environment: str) -> dict | str:
     """Re-authenticate and return fresh cookies, or error string."""
     await browser_login(environment)
-    refreshed = load_cookies()
+    refreshed = load_cookies(path=get_cookies_path(environment))
     if not refreshed:
         return "Login failed. Please use the login tool and try again."
     return cookies_as_dict(refreshed)
@@ -55,7 +55,7 @@ def _format_followups(question: dict) -> str:
     return "\n".join(lines)
 
 
-_PARAM_DEPS: dict[str, list[str]] = {
+_FALLBACK_PARAM_DEPS: dict[str, list[str]] = {
     "deployment": ["customerName", "productName"],
     "deploymentList": ["customerName", "productName"],
     "outcome": ["customerName", "productName", "deploymentList"],
@@ -69,7 +69,7 @@ _PARAM_DEPS: dict[str, list[str]] = {
     "metrics": ["customerName", "productName"],
 }
 
-_FIELD_NAME_MAP: dict[str, dict[str, str]] = {
+_FALLBACK_FIELD_NAME_MAP: dict[str, dict[str, str]] = {
     "outcome": {"deploymentList": "deployment"},
     "outcomes": {"deploymentList": "deployment"},
     "subBusinessEntity": {"customerName": "customer_hierarchy"},
@@ -84,7 +84,14 @@ _FIELD_NAME_MAP: dict[str, dict[str, str]] = {
 }
 
 
-def _build_dependent_body(parameters: dict, param_name: str) -> dict | None:
+def _get_param_def(question: dict, param_name: str) -> dict | None:
+    for pdef in question.get("parameters", []):
+        if pdef.get("name") == param_name:
+            return pdef
+    return None
+
+
+def _build_dependent_body(question: dict, parameters: dict, param_name: str) -> dict | None:
     """Build the extra_body dict with resolved dependency values for a lookup API.
 
     Deployment lookups need customerName + productName.
@@ -92,11 +99,40 @@ def _build_dependent_body(parameters: dict, param_name: str) -> dict | None:
     Uses per-target fieldName mappings from the catalog where param names
     differ from the API body keys.
     """
-    needed = _PARAM_DEPS.get(param_name)
+    param_def = _get_param_def(question, param_name)
+    api_params = (param_def or {}).get("api", {}).get("params", {})
+    body = {}
+    if isinstance(api_params, dict) and api_params:
+        for api_key, spec in api_params.items():
+            if not isinstance(spec, dict):
+                continue
+            if "value" in spec:
+                body[api_key] = spec["value"]
+                continue
+            source = spec.get("fieldName")
+            if not source:
+                continue
+
+            raw_val = None
+            if source in parameters:
+                raw_val = parameters[source]["value"]
+            elif source == "deploymentList" and "deployment" in parameters:
+                raw_val = parameters["deployment"]["value"]
+            elif source == "deployment" and "deploymentList" in parameters:
+                raw_val = parameters["deploymentList"]["value"]
+
+            if raw_val is None:
+                continue
+            if spec.get("transform") == "to-array" and not isinstance(raw_val, list):
+                raw_val = [raw_val]
+            body[api_key] = raw_val
+        if body:
+            return body
+
+    needed = _FALLBACK_PARAM_DEPS.get(param_name)
     if not needed:
         return None
-    field_map = _FIELD_NAME_MAP.get(param_name, {})
-    body = {}
+    field_map = _FALLBACK_FIELD_NAME_MAP.get(param_name, {})
     for dep in needed:
         raw_val = None
         if dep in parameters:
@@ -170,10 +206,11 @@ async def _resolve_params_with_lookups(
                 if results:
                     val = {"label": results[0]["label"], "value": results[0]["value"]}
                 else:
-                    val = {"label": val["label"], "value": val["label"]}
+                    unresolvable.append(name)
+                    continue
 
             elif auto_resolve:
-                dep_body = _build_dependent_body(parameters, name)
+                dep_body = _build_dependent_body(question, parameters, name)
                 prefer_primary = name in ("deployment", "deploymentList")
                 resolved = await auto_select_remote_param(
                     environment, agent, name, question_id, cookies,
@@ -187,13 +224,16 @@ async def _resolve_params_with_lookups(
                     continue
 
             elif needs_resolution:
-                dep_body = _build_dependent_body(parameters, name)
+                dep_body = _build_dependent_body(question, parameters, name)
                 resolved = await resolve_remote_param(
                     environment, agent, name, question_id, val["label"], cookies,
                     dependent_params=dep_body,
                 )
                 if resolved:
                     val = {"label": resolved[1], "value": resolved[0]}
+                else:
+                    unresolvable.append(name)
+                    continue
 
             else:
                 param_def = next(
@@ -207,13 +247,16 @@ async def _resolve_params_with_lookups(
                     and isinstance(val, dict)
                     and val.get("label") == val.get("value")
                 ):
-                    dep_body = _build_dependent_body(parameters, name)
+                    dep_body = _build_dependent_body(question, parameters, name)
                     resolved = await resolve_remote_param(
                         environment, agent, name, question_id, val["value"], cookies,
                         dependent_params=dep_body,
                     )
                     if resolved:
                         val = {"label": resolved[1], "value": resolved[0]}
+                    else:
+                        unresolvable.append(name)
+                        continue
 
             clean = {
                 "label": val["label"],

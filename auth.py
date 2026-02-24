@@ -10,6 +10,12 @@ HOSTS = {
     "stage": "https://cxassistant-stage.cisco.com"
 }
 
+def get_cookies_path(environment: str = "production") -> Path:
+    """Return environment-specific cookie file path."""
+    if environment == "stage":
+        return Path.home() / ".cx-assistant-cookies-stage.json"
+    return cookies_path
+
 def save_cookies(cookies: list, path: Path = cookies_path) -> None:
     """Save browser cookies to local JSON file."""
     path.write_text(json.dumps(cookies, indent=2))
@@ -96,5 +102,5 @@ async def browser_login(environment: str = "production") -> str:
             pass
         cookies = await context.cookies()
         await browser.close()
-    save_cookies(cookies)
+    save_cookies(cookies, path=get_cookies_path(environment))
     return f"Login successful for {environment}. Cookies saved."

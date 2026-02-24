@@ -10,8 +10,7 @@ import re
 from pathlib import Path
 from rapidfuzz import process, fuzz
 from lookup import (
-    PRODUCTS, resolve_product, resolve_static, STATIC_OPTIONS,
-    ADOPTION_LOOKUP_ENDPOINTS, LOOKUP_ENDPOINTS,
+    PRODUCTS, resolve_static, STATIC_OPTIONS,
 )
 
 _CATALOG: list | None = None
@@ -81,7 +80,6 @@ def extract_parameters(message: str, param_defs: list[dict]) -> dict:
         None means the parameter could not be extracted and needs resolution.
     """
     extracted: dict = {}
-    param_names = [p["name"] for p in param_defs]
 
     for pdef in param_defs:
         name = pdef["name"]
@@ -140,7 +138,7 @@ def _extract_customer(message: str) -> dict | None:
     m = re.search(r"\b(\d{5,6})\b", message)
     if m:
         cav_id = m.group(1)
-        return {"label": cav_id, "value": cav_id, "_needs_resolution": True}
+        return {"label": cav_id, "value": cav_id}
 
     m = re.search(r"\b(?:for|of)\s+([A-Za-z][^\n,?]+)", message)
     if m:
@@ -216,7 +214,10 @@ def _extract_static(param_name: str, message: str, pdef: dict) -> dict | None:
 
 _DEPLOYMENT_PATTERNS = [
     re.compile(r"\bprimary\s+deployment\b", re.IGNORECASE),
-    re.compile(r"\bdeployment\s+(\S+)", re.IGNORECASE),
+    re.compile(
+        r"\bdeployment\s+(.+?)(?:\s+(?:for|with|and|in)\b|[,.?]|$)",
+        re.IGNORECASE,
+    ),
 ]
 
 _OUTCOME_KEYWORDS = [
