@@ -6,6 +6,7 @@ Query Cisco CX Assistant (production and stage) directly from Cursor using natur
 
 - Python 3.11 or higher (`python --version` to check)
 - [Cursor](https://cursor.sh) editor
+- **Mac only:** [Google Chrome](https://www.google.com/chrome/) installed — required for Cisco Duo device trust during login
 
 ## Setup (one time per machine)
 
@@ -35,6 +36,8 @@ source venv/bin/activate
 pip install -r requirements.txt
 playwright install chromium
 ```
+
+> **Mac note:** Login uses your real installed Chrome (required for Cisco Duo device trust). If Chrome is not installed, it falls back to bundled Chromium, which may fail Duo authentication. Install [Google Chrome](https://www.google.com/chrome/) if login fails.
 
 ### 3. Configure Cursor
 
@@ -125,7 +128,7 @@ Login to CX Assistant stage
 - **Deal IDs** should be in format `D-XXXXX` (e.g. `D-72595030`)
 - **Session cookies expire** — if you get an authentication error, run `Login to CX Assistant production` again
 - **Stage vs Production**: Use stage for testing and exploration; use production for real customer data
-- **Stage browser fallback**: If Chrome fails during stage login, the tool automatically tries Edge then Safari
+- **Browser selection**: On Mac, login uses real Chrome (for Duo device trust) with bundled Chromium as fallback. On Windows, real Edge is tried first, then bundled Chromium. Both production and stage use the same browser logic.
 
 ---
 
@@ -138,4 +141,4 @@ Login to CX Assistant stage
 | Browser doesn't open | Run `playwright install chromium` in the project folder |
 | "Could not find matching question" | Use `ask_*_open` for free-form questions instead |
 | Login browser doesn't close | Complete Duo login — browser closes automatically after redirect |
-| Stage login fails on all browsers | Run `playwright install webkit` then try again |
+| Duo login fails on Mac | Install [Google Chrome](https://www.google.com/chrome/) — bundled Chromium lacks device trust support |
