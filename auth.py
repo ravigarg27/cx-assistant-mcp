@@ -34,11 +34,15 @@ def cookies_as_dict(cookies: list) -> dict:
     return {c["name"]: c["value"] for c in cookies}
 
 async def _launch_browser(p):
-    """Platform-aware browser launch with fallback for stage login.
+    """Platform-aware browser launch using real installed browsers.
 
-    Windows: Edge -> Chromium
-    Mac:     Safari (WebKit) -> Chromium
-    Other:   Chromium only
+    Playwright cannot launch the actual Safari app, so on Mac we use
+    the real installed Chrome (channel="chrome") which has access to
+    the system keychain and device trust needed for Cisco Duo.
+
+    Windows: real Edge -> bundled Chromium
+    Mac:     real Chrome -> bundled Chromium
+    Other:   bundled Chromium
     """
     if sys.platform == "win32":
         attempts = [
@@ -47,7 +51,7 @@ async def _launch_browser(p):
         ]
     elif sys.platform == "darwin":
         attempts = [
-            (p.webkit, {}, "Safari"),
+            (p.chromium, {"channel": "chrome"}, "Chrome"),
             (p.chromium, {}, "Chromium"),
         ]
     else:
@@ -64,7 +68,7 @@ async def _launch_browser(p):
             continue
     raise RuntimeError(
         f"No supported browser found. Last error: {last_error}. "
-        f"Run 'playwright install chromium' and try again."
+        f"Install Google Chrome or run 'playwright install chromium' and try again."
     )
 
 async def browser_login(environment: str = "production") -> str:
