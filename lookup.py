@@ -247,7 +247,7 @@ def _normalize_list_item(r) -> dict:
         or r.get("name")
         or str(r)
     )
-    return {"label": label, "value": value}
+    return {"label": str(label), "value": str(value)}
 
 
 def _parse_deployment_list(deployment_list: list) -> list[dict]:
@@ -408,6 +408,9 @@ async def auto_select_remote_param(
                 return (opt["value"], opt["label"])
 
     if len(options) == 1:
+        return (options[0]["value"], options[0]["label"])
+
+    if param_name in ("outcome", "outcomes") and options:
         return (options[0]["value"], options[0]["label"])
 
     return None

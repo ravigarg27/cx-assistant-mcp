@@ -138,7 +138,7 @@ def _extract_customer(message: str) -> dict | None:
     m = re.search(r"\b(\d{5,6})\b", message)
     if m:
         cav_id = m.group(1)
-        return {"label": cav_id, "value": cav_id}
+        return {"label": cav_id, "value": cav_id, "_needs_resolution": True}
 
     m = re.search(r"\b(?:for|of)\s+([A-Za-z][^\n,?]+)", message)
     if m:

@@ -4,6 +4,8 @@ Exposes tools for querying CX Assistant production and stage environments
 with automatic question routing, parameter resolution, and follow-up support.
 """
 
+import re
+
 from fastmcp import FastMCP
 from auth import browser_login, load_cookies, cookies_as_dict, get_cookies_path
 from routing import (
@@ -91,6 +93,23 @@ def _get_param_def(question: dict, param_name: str) -> dict | None:
     return None
 
 
+_VALUE_FIELD_RE = re.compile(r"'value'\s*:\s*\$\.(\w+)")
+
+
+def _uses_summary_as_value(question: dict, param_name: str) -> bool:
+    """Check if the catalog transform maps value to OUTCOME_SUMMARY.
+
+    Some questions (e.g. Q21, Q27) use OUTCOME_SUMMARY as the parameter
+    value while others (e.g. Q36) use OUTCOME_ID.
+    """
+    pdef = _get_param_def(question, param_name)
+    if not pdef:
+        return False
+    transform = (pdef.get("api") or {}).get("transform", "")
+    m = _VALUE_FIELD_RE.search(transform)
+    return m is not None and m.group(1) == "OUTCOME_SUMMARY"
+
+
 def _build_dependent_body(question: dict, parameters: dict, param_name: str) -> dict | None:
     """Build the extra_body dict with resolved dependency values for a lookup API.
 
@@ -124,6 +143,8 @@ def _build_dependent_body(question: dict, parameters: dict, param_name: str) -> 
             if raw_val is None:
                 continue
             if spec.get("transform") == "to-array" and not isinstance(raw_val, list):
+                raw_val = [raw_val]
+            elif api_key in ("deploymentList",) and not isinstance(raw_val, list):
                 raw_val = [raw_val]
             body[api_key] = raw_val
         if body:
@@ -229,6 +250,11 @@ async def _resolve_params_with_lookups(
                     environment, agent, name, question_id, val["label"], cookies,
                     dependent_params=dep_body,
                 )
+                if not resolved and name in ("outcome", "outcomes"):
+                    resolved = await auto_select_remote_param(
+                        environment, agent, name, question_id, cookies,
+                        dependent_params=dep_body,
+                    )
                 if resolved:
                     val = {"label": resolved[1], "value": resolved[0]}
                 else:
@@ -243,13 +269,12 @@ async def _resolve_params_with_lookups(
                 if (
                     param_def
                     and param_def.get("subtype") == "remote"
-                    and name not in ("customerName", "productName")
                     and isinstance(val, dict)
-                    and val.get("label") == val.get("value")
                 ):
                     dep_body = _build_dependent_body(question, parameters, name)
+                    hint = val.get("label") or val.get("value", "")
                     resolved = await resolve_remote_param(
-                        environment, agent, name, question_id, val["value"], cookies,
+                        environment, agent, name, question_id, hint, cookies,
                         dependent_params=dep_body,
                     )
                     if resolved:
@@ -258,9 +283,17 @@ async def _resolve_params_with_lookups(
                         unresolvable.append(name)
                         continue
 
+            if name in ("outcome", "outcomes") and _uses_summary_as_value(question, name):
+                val = {"label": val["label"], "value": val["label"]}
+
+            param_def = _get_param_def(question, name)
+            final_value = val["value"]
+            if param_def and param_def.get("multiple") and not isinstance(final_value, list):
+                final_value = [final_value]
+
             clean = {
                 "label": val["label"],
-                "value": val["value"],
+                "value": final_value,
                 "hidden": val.get("hidden", False),
             }
             parameters[name] = clean
